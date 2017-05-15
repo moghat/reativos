@@ -1,0 +1,44 @@
+#include "arduino/arduino.ceu"
+
+#define blink_led(PIN,T) \
+do \
+emit PIN(HIGH);\
+await T;\
+emit PIN(LOW);\
+await T;\
+end
+
+input  int PIN_02;
+output int PIN_11;
+output int PIN_12;
+output int PIN_13;
+
+
+    par/or do
+        loop do
+		blink_led(PIN_11,500ms);
+        end
+    with
+        loop do
+		blink_led(PIN_12,1s);
+        end
+    with
+        loop do		
+		blink_led(PIN_13,250ms);
+        end
+    with
+	loop do 
+	        var int on = await PIN_02 until on==LOW;
+		await 20ms;
+		par/or do
+			on = await PIN_02 until on==HIGH;
+			await 20ms;			
+			on = await PIN_02 until on==LOW;
+			break;
+		with
+			await 500ms;
+		end
+	end
+    end
+    await FOREVER;
+
