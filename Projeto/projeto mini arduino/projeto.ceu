@@ -1,0 +1,322 @@
+#include "arduino/arduino.ceu"
+
+#define MAX_TIME 100
+#define LEVEL_MAX 10
+#define TREE_SIZE 10
+#define btnNONE 23;  
+#define btnUP 24;  
+#define btnRIGHT 25; 
+#define btnLEFT 26; 
+#define btnDOWN 27; 
+#define btnSELECT 28; 
+
+#define P_L 2
+#define P_R 3
+#define T_E_L 4
+#define T_E_R 5
+#define T_L 6
+#define T_R 7
+
+#define trataBT(btn,value) \
+loop do \
+			var int on = await KEY1 until on == btn;\
+			{\
+				position = @value;\
+				calc_score();\
+				time_inc();\
+				move_tree();\
+				if(update()!=0)break;\
+			}\
+		end
+input int KEY1;
+
+native/pre do
+
+void draw();
+	int tree[TREE_SIZE]; 
+	int tree_position;
+	unsigned long m_time;
+	int level;
+	int position;
+	int score;
+	int finalR;
+
+	##include <LiquidCrystal.h>
+	LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
+
+
+	
+	byte on = 0b11111;
+	byte off = 0b00000;
+	byte left[8] = {
+		0b00100,
+		0b10010,
+		0b01111,
+		0b10010,
+		0b00010,
+		0b00001,
+		0b11111,
+		0b11111
+	};
+
+	byte right[8] = {
+		0b11111,
+		0b11111,
+		0b00001,
+		0b00010,
+		0b10010,
+		0b01111,
+		0b10010,
+		0b00100
+	};
+	byte tree_empty_l_def[8] = {
+		0b00000,
+		0b00000,
+		0b00000,
+		0b00000,
+		0b00000,
+		0b00000,
+		0b11111,
+		0b11111
+	};
+	byte tree_empty_r_def[8] = {
+		0b11111,
+		0b11111,
+		0b00000,
+		0b00000,
+		0b00000,
+		0b00000,
+		0b00000,
+		0b00000
+	};
+
+	byte tree_left_def[8] = {
+		0b00000,
+		0b01110,
+		0b01110,
+		0b01110,
+		0b01110,
+		0b01110,
+		0b11111,
+		0b11111
+	};
+	byte tree_right_def[8] = {
+		0b11111,
+		0b11111,
+		0b01110,
+		0b01110,
+		0b01110,
+		0b01110,
+		0b01110,
+		0b00000
+	};
+
+
+	void clear_tree(){
+		int i;
+		for(i=0;i<TREE_SIZE;i++)tree[i]=0;
+	}
+	void start(){
+		m_time=MAX_TIME;
+		level = 1;
+		position = -1;
+		tree_position=0;
+		score = 0;
+		clear_tree();
+		lcd.clear();			
+	}
+	int collision(){
+		return position==tree[tree_position];
+	}
+	int new_branch(){
+		int a,prev;
+		int mi=-3;
+		int ma=4;
+		/*3 anteriores*/
+		for(int x =3;x>0;x--){
+			prev = tree[(tree_position+TREE_SIZE-x)%TREE_SIZE];
+			if(prev>0)ma--;
+			else if(prev<0)mi++;
+		}
+		if(prev==0) a = random(mi,ma); 
+		else if(prev==-1)a = random(mi,1); 
+		else if(prev==1)a = random(0,ma); 
+
+
+		if(a<0)return -1;
+		else if(a>0)return 1;
+		else return 0;
+	}
+	void time_dec(){
+		if(m_time<=level)m_time=0;
+		else m_time-= (level);
+	}
+	void time_inc(){
+		
+		m_time+=level*2;
+		if(m_time>MAX_TIME)m_time=MAX_TIME;
+	}
+	void move_tree(){
+		tree[tree_position] = new_branch();
+		tree_position= (tree_position+1)%TREE_SIZE;
+	}
+	void calc_level(){
+		level = score/10 +1;
+		if(level>LEVEL_MAX)level=LEVEL_MAX;
+	}
+	void calc_score(){
+		score++;
+		if(score%10)calc_level();
+	}
+	int update(){
+		if(collision())return -1;
+		time_dec();
+		if(m_time==0)return -2;
+		draw();
+		return 0;		
+	}
+
+	void draw_score(){	
+		lcd.setCursor(13, 0);	
+		lcd.print(score);
+	}
+	void draw_time(){
+	    int id;
+	    byte my_time[8];
+	    for(int w =0;w<2;w++){
+	      for(int i=0;i<8;i++){
+			id=i+(8*w);
+			my_time[i]= ((id*(MAX_TIME/16))<=m_time)?on:off;
+	      }
+	      lcd.createChar(w, my_time);
+
+	      lcd.setCursor(12,w);
+	      lcd.write((uint8_t)w);
+	    }
+	}
+
+	void draw_tree(int l, int c){
+	  if(c==-1){
+	    lcd.setCursor(l,0);
+	    lcd.write((uint8_t)T_L);
+	    lcd.setCursor(l,1);
+	    lcd.write((uint8_t)T_E_R);
+	  }else if(c==1){
+	    lcd.setCursor(l,0);
+	    lcd.write((uint8_t)T_E_L);
+	    lcd.setCursor(l,1);
+	    lcd.write((uint8_t)T_R);
+	  }else if(c==0){
+	    lcd.setCursor(l,0);
+	    lcd.write((uint8_t)T_E_L);
+	    lcd.setCursor(l,1);
+	    lcd.write((uint8_t)T_E_R);
+	  }
+	}
+	void draw_full_tree(){
+		int aux;
+		for(int i=TREE_SIZE-1;i>=0;i--){
+			aux = tree[(tree_position+i)%TREE_SIZE];
+			draw_tree(i,aux);
+		}
+	}
+	void draw_p(){
+		  int l = 0;
+		  if(position==-1){
+		    lcd.setCursor(l, 0);
+		    lcd.write((uint8_t)2);
+		    lcd.setCursor(l, 1);
+		    lcd.write((uint8_t)T_E_R);
+		  }
+		  if(position==1){
+		    lcd.setCursor(l, 1);
+		    lcd.write((uint8_t)3);
+		    lcd.setCursor(l, 0);
+		    lcd.write((uint8_t)T_E_L);
+		  }
+	}
+	void draw(){
+	  draw_score();
+	  draw_time();
+	  draw_full_tree();
+	  draw_p();
+
+	}
+
+	void draw_game_over(){
+		lcd.clear();
+		lcd.setCursor(0, 0);	
+		lcd.print("Score: ");
+		lcd.print(score);
+		lcd.setCursor(0, 1);
+		lcd.print("press SELECT");
+	}
+	int read_button()
+	{
+	 int key_in = analogRead(0);  
+	 if (key_in > 1000) 
+		return btnNONE; 
+	 
+	 if (key_in < 50)   return btnUP;  
+	 if (key_in < 250)  return btnRIGHT; 
+	 if (key_in < 450)  return btnLEFT; 
+	 if (key_in < 650)  return btnDOWN; 
+	 if (key_in < 850)  return btnSELECT;  
+
+	 return btnNONE;  
+	}
+	void draw_start(){
+		lcd.clear();
+		lcd.setCursor(2, 0);	
+		lcd.print("Press SELECT");
+		lcd.setCursor(4, 1);
+		lcd.print("to start");
+	}
+
+end 
+{
+	randomSeed(analogRead(12));  
+	lcd.begin(16, 2);
+	lcd.createChar(P_L, left);
+	lcd.createChar(P_R, right);
+	lcd.createChar(T_E_L,tree_empty_l_def);
+	lcd.createChar(T_E_R,tree_empty_r_def);
+	lcd.createChar(T_R,tree_right_def);
+	lcd.createChar(T_L,tree_left_def);
+	Serial.begin(9600);
+}
+par do	
+	loop do
+		{draw_start();}
+		var int on = await KEY1 until on==btnSELECT;	
+		{start();}
+		par/or do
+		loop do
+			{if(update()!=0)break;}
+			await 1s;
+		end
+		with
+			trataBT(btnUP,1);
+		with
+			trataBT(btnDOWN,-1);
+		end
+		{draw_game_over();}
+		var int on = await KEY1 until on==btnSELECT;	
+	end
+	with
+		var int key = 0;
+		loop do
+			var int read1 = {read_button();};
+			await 20ms;
+			var int read2 = {read_button();};
+			if read1==read2 and key!=read1 then
+				key = read1;
+				if key != 0 then
+				        await async (read1) do
+					emit KEY1(read1);
+				end
+			end
+		end
+	end
+end
+
