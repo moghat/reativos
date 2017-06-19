@@ -1,0 +1,267 @@
+#include "c.ceu"
+#include "sdl/sdl.ceu"
+
+var int state = 1;
+var int score = 0;
+
+code/tight Intersects (var& SDL_Rect rct1, var& SDL_Rect rct2) -> bool do
+    escape not((rct1.x > rct2.x+rct2.w) or (rct1.x+rct1.w < rct2.x) 
+            or (rct1.y > rct2.y+rct2.h) or (rct1.y+rct1.h < rct2.y));
+end
+
+
+var&? SDL_Init sdl = spawn SDL_Init("Frog", 640,480, SDL_Color(0xFF,0xFF,0xFF,0xFF));
+
+watching sdl do
+	var& SDL_Open_Image img_car = spawn SDL_Open_Image(&sdl!.ren, "car.png");
+	var& SDL_Open_Image img_player = spawn SDL_Open_Image(&sdl!.ren, "player.png");	
+	
+	var& SDL_Open_Font font = spawn SDL_Open_Font("Calibri.ttf", 40);
+	var& SDL_New_Text pEnter = spawn SDL_New_Text(&sdl!.ren, &font.font, "Press Enter", SDL_Color(0x00,0x00,0x00,0xFF));
+	var& SDL_New_Text gOVer = spawn SDL_New_Text(&sdl!.ren, &font.font, "Game Over!", SDL_Color(0xFF,0x00,0x00,0xFF));
+	
+	
+	code/await PrintStart(void) -> void do
+		var SDL_Rect rect = val SDL_Rect((640/2)-80, (480/2)-30, outer.pEnter.tex.width, outer.pEnter.tex.height);
+		par/or do
+			var _SDL_KeyboardEvent&& key;
+			key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_RETURN;
+			outer.state = 2;
+		with
+			every SDL_REDRAW do
+				_SDL_RenderCopy(&&outer.sdl!.ren, &&outer.pEnter.tex.tex, null, &&rect as _SDL_Rect&&);
+			end
+		end
+	end
+	
+	code/await PrintEnd(void) -> void do
+		var SDL_Rect rect = val SDL_Rect((640/2)-80, (480/2)-30, outer.gOVer.tex.width, outer.gOVer.tex.height);
+		par/or do
+			var _SDL_KeyboardEvent&& key;
+			key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_RETURN;
+			outer.state = 2;
+		with
+			every SDL_REDRAW do
+				_SDL_RenderCopy(&&outer.sdl!.ren, &&outer.gOVer.tex.tex, null, &&rect as _SDL_Rect&&);
+			end
+		end
+	end
+
+	/*
+	code/await PrintScore(void)
+		var SDL_Rect rect = val SDL_Rect(10, 10, outer.txt.tex.width, outer.txt.tex.height);
+		every SDL_REDRAW do
+			_SDL_RenderCopy(&&outer.sdl!.ren, &&outer.txt.tex.tex, null, &&rect as _SDL_Rect&&);
+		end
+	end
+	*/
+	
+    code/await Car (var int xRec, var int yRec, var int wRec, var int hRec, var float vx) -> (var SDL_Rect r, var int destroyCar) -> void do
+		r = val SDL_Rect(xRec, yRec, wRec, hRec);
+		var float x = r.x;
+		destroyCar = 0;
+		par/or do
+			var int dt;
+			every dt in SDL_DT do
+				x = x + vx*dt/1000;
+				if x > 640 then
+					x = -r.w;
+				end
+				if destroyCar == 1 then
+					break;
+				end
+			end
+		with
+			every SDL_REDRAW do
+				r.x = x as int;
+				_SDL_RenderCopy(&&outer.sdl!.ren, &&outer.img_car.tex.tex, null, &&r as _SDL_Rect&&);
+			end
+		end
+    end
+	
+	
+    code/await Player (void) -> (var SDL_Rect r, var int destroyPlayer) -> void do
+        var float x = 640/2 - 20/2;
+        var float y = 480-50;
+        var float vx = 0;
+        var float vy = 0;
+		
+        r = val SDL_Rect(0,0, 7*5, 4*5);
+		outer.score = 0;
+        destroyPlayer = 0;
+		par/or do
+			var int dt;
+			every dt in SDL_DT do
+				if destroyPlayer == 1 then
+					break;
+				end
+			end
+		with
+            var int dt;
+            every dt in SDL_DT do
+				if x<=0 and vx==-100 then
+					x = 0;
+					vx = 0;
+				end
+				if x>=640-r.w and vx==100 then
+					x = 640-r.w;
+					vx = 0;
+				end
+				if y<=0 and vy==-100 then
+					y = 0;
+					vy = 0;
+				end
+				if y>=480-r.h and vy==100 then
+					y = 480-r.h;
+					vy = 0;
+				end
+				if y==0 then
+					y=480-r.h;
+					vy = -100;
+					outer.score=outer.score+1;
+					_printf("%d!\n", outer.score);
+				end
+                x = x + vx*dt/1000;
+                y = y + vy*dt/1000;
+            end
+        with
+            par do
+                loop do
+                    var _SDL_KeyboardEvent&& key;
+                    key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_LEFT;
+                    vx = -100;
+                    key = await SDL_KEYUP   until key:keysym.sym==_SDLK_LEFT;
+                    vx = 0;
+		    
+                end
+            with
+                loop do
+                    var _SDL_KeyboardEvent&& key;
+                    key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_RIGHT;
+                    vx = 100;
+                    key = await SDL_KEYUP   until key:keysym.sym==_SDLK_RIGHT;
+                    vx = 0;
+                end
+			with
+                loop do
+                    var _SDL_KeyboardEvent&& key;
+                    key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_UP;
+                    vy = -100;
+                    key = await SDL_KEYUP   until key:keysym.sym==_SDLK_UP;
+                    vy = 0;
+                end
+            with
+                loop do
+                    var _SDL_KeyboardEvent&& key;
+                    key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_DOWN;
+                    vy = 100;
+                    key = await SDL_KEYUP   until key:keysym.sym==_SDLK_DOWN;
+                    vy = 0;
+                end
+			end
+        with
+            every SDL_REDRAW do
+                r.x = x as int;
+                r.y = y as int;
+				_SDL_RenderCopy(&&outer.sdl!.ren, &&outer.img_player.tex.tex, null, &&r as _SDL_Rect&&);				
+            end
+        end
+    end
+
+    pool[1] Player player;
+    pool[3] Car cars1;
+	pool[4] Car cars2;
+	pool[3] Car cars3;
+	pool[2] Car cars4;
+	pool[3] Car cars5;
+	pool[] PrintEnd msg;
+	
+	var bool start = false;
+	par do
+		if (state == 1) then
+			await PrintStart();
+        end
+	with
+		every SDL_DT do
+			if state == 2 then
+				spawn Player() in player;
+					var int i;
+					loop i in [1 -> 4] do
+						spawn Car(i*200, 80, 10*7, 4*9, 150) in cars1;
+						spawn Car(i*150, 140, 10*7, 4*9, 80) in cars2;
+						spawn Car(i*250, 200, 10*7, 4*9, 300) in cars3;
+						spawn Car(i*150, 260, 10*7, 4*9, 120) in cars4;
+						spawn Car(i*150, 320, 10*7, 4*9, 100) in cars5;
+					end				
+				state = 3;
+			end
+			if state == 3 then
+				var&? Player p;
+				loop p in player do
+					var&? Car c;
+					loop c in cars1 do
+						if (call Intersects(&p!.r, &c!.r)) then
+							_printf("bateu\n");
+							state = 4;
+							break;
+						end
+					end
+					loop c in cars2 do
+						if (call Intersects(&p!.r, &c!.r)) then
+							_printf("bateu\n");
+							state = 4;
+							break;
+						end
+					end
+					loop c in cars3 do
+						if (call Intersects(&p!.r, &c!.r)) then
+							_printf("bateu\n");
+							state = 4;
+							break;
+						end
+					end
+					loop c in cars4 do
+						if (call Intersects(&p!.r, &c!.r)) then
+							_printf("bateu\n");
+							state = 4;
+							break;
+						end
+					end
+					loop c in cars5 do
+						if (call Intersects(&p!.r, &c!.r)) then
+							_printf("bateu\n");
+							state = 4;
+							break;
+						end
+					end
+				end
+				
+			end
+			if state == 4 then 
+				var&? Player p;
+				loop p in player do
+					p!.destroyPlayer = 1;
+				end
+				var&? Car c;
+				loop c in cars1 do
+					c!.destroyCar = 1;
+				end
+				loop c in cars2 do
+					c!.destroyCar = 1;
+				end
+				loop c in cars3 do
+					c!.destroyCar = 1;
+				end
+				loop c in cars4 do
+					c!.destroyCar = 1;
+				end
+				loop c in cars5 do
+					c!.destroyCar = 1;
+				end
+				spawn PrintEnd() in msg;
+			end
+		end
+	end
+end
+
+escape 0;
