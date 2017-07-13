@@ -1,22 +1,22 @@
-## O '.zip' inclui o jogo compilado e sem o cÛdigo fonte.
-## Compilador no Windows, provavelmente h· incompatibilidade com Linux.
+## O '.zip' inclui o jogo compilado e sem o c√≥digo fonte.
+## Compilado no Windows, provavelmente h√° incompatibilidade com Linux.
 
-O projeto foi feito com cÈu-sdl.
+O projeto foi feito com c√©u-sdl.
 
-DescriÁ„o do Projeto Final
-O projeto È um jogo de plataforma 2D no estilo survival, baseado em pontos.
+# Descri√ß√£o do Projeto
+O projeto √© um jogo em plataforma 2D no estilo survival, baseado em pontos.
 O jogador deve matar os monstros que aparecem na tela e evitar que eles o matem.
-O jogador pode pular, andar, atirar (apenas parado), recarregar e trocar de armas. (botıes no final da descriÁ„o)
-A pontuaÁ„o sobe para cada monstro morto. Depois de mortos eles tem chances de deixar cair muniÁ„o.
-Os monstros seguem o jogador apenas pelo eixo x e d„o dano ao enconst·-lo.
-Ao Receber dano o jogador È tambÈm empurrado para tr·s.
+O jogador pode pular, andar, atirar (apenas parado), recarregar e trocar de armas. (bot√µes no final da descri√ß√£o)
+A pontua√ß√£o sobe para cada monstro morto. Depois de mortos eles tem chances de deixar cair muni√ß√£o.
+Os monstros seguem o jogador apenas pelo eixo x e d√£o dano ao enconst√°-lo.
+Ao Receber dano o jogador √© tamb√©m empurrado para tr√°s.
 
 Cada tiro acertado paralisa os monstros por um tempo, use isso a seu favor!
 
 How to play:
 Andar: a - mover para esquerda
 	   d - mover para direita
-	   barra_de_espaÁo - pular
+	   barra_de_espa√ßo - pular
 Armas: seta_esquerda - atirar
 	   1 - mudar para rifle
 	   2 - mudar para espingarda
