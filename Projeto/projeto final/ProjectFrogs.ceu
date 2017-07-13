@@ -1,0 +1,1132 @@
+#include "c.ceu"
+#include "sdl/sdl.ceu"
+
+#define WINDOW_W 800
+#define WINDOW_H 600
+#define GF +20
+
+//respawn
+#define R1X 10
+#define R1Y 10
+
+native/nohold
+	_SDL_RenderCopyEx;
+
+native/const 
+	_SDL_FLIP_HORIZONTAL,
+	_SDL_FLIP_NONE,
+	_SDLK_1,
+	_SDLK_2,
+	_SDLK_SPACE;
+	
+native/plain
+	_SDL_RendererFlip,
+	//_SDL_New_Text,
+	_char;
+	//_array;
+
+var int state = 1;
+var int score = 0;
+
+
+code/tight Intersects (var& SDL_Rect rct1, var& SDL_Rect rct2) -> bool do
+    escape (rct1.x        <= rct2.x+rct2.w and
+           rct1.x+rct1.w >= rct2.x        and
+           rct1.y        <= rct2.y+rct2.h and
+           rct1.y+rct1.h >= rct2.y and rct1.y+rct1.h >= rct2.y);
+end
+
+var&? SDL_Init sdl = spawn SDL_Init("ProjectFrogs", WINDOW_W,WINDOW_H, SDL_Color(0xFF,0xFF,0xFF,0xFF));
+
+watching sdl do
+//{intro sdl
+	var& SDL_Open_Image img_player = spawn SDL_Open_Image(&sdl!.ren, "player0.png");	
+	var& SDL_Open_Image img_background01 = spawn SDL_Open_Image(&sdl!.ren, "background01.png");	
+	var& SDL_Open_Image img_monster01 = spawn SDL_Open_Image(&sdl!.ren, "monster01.png");
+	var& SDL_Open_Image img_weapons = spawn SDL_Open_Image(&sdl!.ren, "weapons.png");
+	var& SDL_Open_Image img_player_hp = spawn SDL_Open_Image(&sdl!.ren, "player_hp.png");
+	var& SDL_Open_Image img_ammo_00 = spawn SDL_Open_Image(&sdl!.ren, "assault_ammo.png");
+	var& SDL_Open_Image img_ammo_01 = spawn SDL_Open_Image(&sdl!.ren, "shotgun_ammo.png");
+	var& SDL_Open_Image img_plataform = spawn SDL_Open_Image(&sdl!.ren, "plataform.png");
+	
+	var& SDL_Open_Sound assault_fire =  spawn SDL_Open_Sound("Sound/Weapon/plasmafire.wav");
+	var& SDL_Open_Sound shotgun_fire =  spawn SDL_Open_Sound("Sound/Weapon/ShotgunFire.wav");
+	var& SDL_Open_Sound weapon_reload01 =  spawn SDL_Open_Sound("Sound/Weapon/ShotgunDBReload1.wav");
+	var& SDL_Open_Sound weapon_reload02 =  spawn SDL_Open_Sound("Sound/Weapon/ShotgunDBReload2.wav");
+	var& SDL_Open_Sound weapon_reload03 =  spawn SDL_Open_Sound("Sound/Weapon/ShotgunDBReload3.wav");
+	var& SDL_Open_Sound item_pick =  spawn SDL_Open_Sound("Sound/Weapon/WeaponPickup.wav");
+	
+	var& SDL_Open_Sound enemy_death01 =  spawn SDL_Open_Sound("Sound/Enemy/ArachnotronDeath.wav");
+	var& SDL_Open_Sound enemy_death02 =  spawn SDL_Open_Sound("Sound/Enemy/BaronofHellDeath.wav");
+	var& SDL_Open_Sound enemy_attack =  spawn SDL_Open_Sound("Sound/Enemy/DemonAttack.wav");
+	var& SDL_Open_Sound enemy_hurt =  spawn SDL_Open_Sound("Sound/Enemy/DemonHurt.wav");
+	var& SDL_Open_Sound enemy_spawn =  spawn SDL_Open_Sound("Sound/Enemy/Teleport.wav");
+	
+	var& SDL_Open_Sound player_death =  spawn SDL_Open_Sound("Sound/Player/PlayerDeath.wav");
+	var& SDL_Open_Sound player_hurt =  spawn SDL_Open_Sound("Sound/Player/PlayerHurt.wav");
+	
+	var& SDL_Open_Sound player_intro =  spawn SDL_Open_Sound("Sound/Player/Doom Marine.wav");
+	var& SDL_Open_Sound player_eat =  spawn SDL_Open_Sound("Sound/Player/Eat Shit and Die.wav");
+	var& SDL_Open_Sound player_good =  spawn SDL_Open_Sound("Sound/Player/Damn I'm good.wav");
+	var& SDL_Open_Sound player_gotta =  spawn SDL_Open_Sound("Sound/Player/Ohh thats gotta hurt.wav");
+	var& SDL_Open_Sound player_bacon =  spawn SDL_Open_Sound("Sound/Player/Making Bacon.wav");
+	var& SDL_Open_Sound player_blow =  spawn SDL_Open_Sound("Sound/Player/Blow it Out your Ass.wav");
+	var& SDL_Open_Sound player_born =  spawn SDL_Open_Sound("Sound/Player/Born to be wild.wav");
+	var& SDL_Open_Sound player_come =  spawn SDL_Open_Sound("Sound/Player/Come Get Some.wav");
+	var& SDL_Open_Sound player_cow =  spawn SDL_Open_Sound("Sound/Player/Holy Cow.wav");
+	var& SDL_Open_Sound player_see =  spawn SDL_Open_Sound("Sound/Player/See You in Hell.wav");
+	var& SDL_Open_Sound player_suck =  spawn SDL_Open_Sound("Sound/Player/Suck it down.wav");
+	var& SDL_Open_Sound player_cake =  spawn SDL_Open_Sound("Sound/Player/Yeah, Peace of Cake.wav");
+	
+	var& SDL_Open_Sound game_over =  spawn SDL_Open_Sound("Sound/Game over.mp3");
+	
+	var& SDL_Open_Font font = spawn SDL_Open_Font("font.ttf", 40);
+	var& SDL_New_Text pEnter = spawn SDL_New_Text(&sdl!.ren, &font.font, "Press Enter", SDL_Color(0x00,0x00,0x00,0xFF));
+	var& SDL_New_Text gOVer = spawn SDL_New_Text(&sdl!.ren, &font.font, "Game Over!", SDL_Color(0xFF,0x00,0x00,0xFF));
+	//var& char[3] oi = "oii";
+	//var& SDL_New_Text ammo = spawn SDL_New_Text(&sdl!.ren, &font.font, "Game Over!", SDL_Color(0xFF,0x00,0x00,0xFF));
+//}
+
+	//{background
+	code/await Background (void) -> (event void destroy) -> int do
+		var SDL_Rect rect = val SDL_Rect(0,0,WINDOW_W,WINDOW_H);
+		
+		//preparando animação
+		var int frames = 8;
+		var int bg_w = 0;
+		var int bg_h = 0;
+		_SDL_QueryTexture(&&outer.img_background01.tex.tex, null, null, &&bg_w, &&bg_h);
+		bg_w = bg_w/frames;
+		var int frame_now = 0;
+		vector[] int animation = [0, 1, 2, 3, 4, 5, 6, 7];
+		
+		//var float x = 0;
+		//par do
+		//	await destroy;
+		//	escape = 0;
+		
+		par do
+			every 40ms do
+				frame_now = (frame_now + 1)%($animation as int);
+			end
+		with
+			every SDL_REDRAW do
+				var SDL_Rect temp = val SDL_Rect(0,0,0,0);
+				temp = val SDL_Rect(animation[frame_now] * bg_w, 0, bg_w, bg_h);
+				_SDL_RenderCopyEx(&&outer.sdl!.ren, &&outer.img_background01.tex.tex, &&temp as _SDL_Rect&&,&&rect as _SDL_Rect&&, 0, null, 0);
+	
+			end
+		with 
+			await destroy;
+			escape 0;
+		end
+	end
+	//}
+	
+	//{printstart printend
+	code/await PrintStart(void) -> void do
+		var SDL_Rect rect = val SDL_Rect((WINDOW_W/2)-120, (WINDOW_H/2)-30, outer.pEnter.tex.width, outer.pEnter.tex.height);
+		par/or do
+			var _SDL_KeyboardEvent&& key;
+			key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_RETURN;
+			outer.state = 2;
+		with
+			every SDL_REDRAW do
+				_SDL_RenderCopy(&&outer.sdl!.ren, &&outer.pEnter.tex.tex, null, &&rect as _SDL_Rect&&);
+			end
+		end
+	end
+	
+	code/await PrintEnd(void) -> void do
+		var SDL_Rect rect = val SDL_Rect((WINDOW_W/2)-120, (WINDOW_H/2)-30, outer.gOVer.tex.width, outer.gOVer.tex.height);
+		par/or do
+			var _SDL_KeyboardEvent&& key;
+			key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_RETURN;
+			outer.state = 2;
+		with
+			every SDL_REDRAW do
+				_SDL_RenderCopy(&&outer.sdl!.ren, &&outer.gOVer.tex.tex, null, &&rect as _SDL_Rect&&);
+			end
+		end
+	end
+	//}
+	
+	//{plataforms
+    code/await Plataforms (var int x, var int y, var int w, var int h) -> (var SDL_Rect hitbox, var SDL_Rect r) -> void do
+		r = val SDL_Rect(x, y, w, h);
+		hitbox = val SDL_Rect(x, y, w, 10);
+		//par/or do
+			every SDL_REDRAW do
+				//_SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0x00,0x00,0x00,0xFF);
+				//_SDL_RenderFillRect(&&outer.sdl!.ren, (&&r as _SDL_Rect&&));
+				
+				//_SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0x00,0x00,0xFF,0xFF);
+				//_SDL_RenderFillRect(&&outer.sdl!.ren, (&&hitbox as _SDL_Rect&&));
+				_SDL_RenderCopy(&&outer.sdl!.ren, &&outer.img_plataform.tex.tex, null, &&r as _SDL_Rect&&);
+			end
+		//end
+    end
+	//}
+	
+	//{blood
+	code/await Blood (var float x, var float y, var int direction) -> (var SDL_Rect r, event void hitfloor) -> int do
+		var int tvx = _rand() % 100+50;
+		var int tvy = _rand() % 50+20;
+		var int ty = _rand() % 30+y;
+		if direction == 1 then
+			x = x + 20;
+		end
+		
+		var int vx = direction*tvx;
+		var int vy = -tvy;
+		y = ty;
+		var bool floor = false;
+        r = val SDL_Rect(x as int, y as int, 5, 5);
+        par/or do
+            var int dt;
+            every dt in SDL_DT do
+				if floor == false then 
+					x = (x + vx*dt/1000);
+					y = (y + vy*dt/1000);
+					vy = vy + GF;
+				end
+				
+                if y < 0 then
+                    escape 0;
+                end
+            end			
+		with
+            every SDL_REDRAW do
+                _SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0xFF,0x00,0x00,0xFF);
+                r.x = x as int;
+				r.y = y as int;
+                _SDL_RenderFillRect(&&outer.sdl!.ren, (&&r as _SDL_Rect&&));
+            end
+		with
+			loop do
+				await hitfloor;
+				floor = true;
+				vy = 0;
+				vx = 0;
+//manter sangue pra sempre ou não???????????????????????
+				await 5s;
+				escape 0;
+			end
+		end
+	end
+	//}
+
+	//{tiros
+	code/await Tiros (var float x, var float y, var int direction, var int damage, var int w, var int h, 
+	var float vx)
+	-> (var SDL_Rect r, event void collide)
+	-> int do
+			vx = vx*direction;
+			r = val SDL_Rect(x as int, y as int, w,h);			
+			par/or do
+				var int dt;
+				every dt in SDL_DT do
+					x = (x + vx*dt/1000.0);
+					if x < 0 or x > WINDOW_W  then
+						escape 0;
+					end
+				end
+			with
+				every SDL_REDRAW do
+					_SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0xAD,0xFF,0x2F,0xFF);
+					r.x = x as int;
+					_SDL_RenderFillRect(&&outer.sdl!.ren, (&&r as _SDL_Rect&&));
+				end
+			with
+				await collide;
+				escape 0;
+		end
+	end	
+	//}
+	
+	//{guns
+	code/await Guns (var int type)
+	-> (var int ammo /*var int type*/, var int ammo_max, var int damage, var int cartridge, var int cartridge_max, 
+	var bool active, var int vx, var int w, var int h, var int delay) 
+	-> void do
+		cartridge_max = 0; cartridge = 0;
+		ammo_max = 0; ammo = 0;
+		damage = 0;
+		delay = 0;
+		vx = 0;
+		w = 0; h = 0;
+		active = false;
+		
+		//_printf("yolo1\n");
+		if type == 0 then//assault riffle
+			cartridge_max = 30; cartridge = 30;
+			ammo_max = 150;	ammo = ammo_max;
+			damage = 2;
+			
+			delay = 150;
+			vx = 450;
+			w = 15;	h = 2;
+			
+		else/if type == 1 then //shotgun
+			cartridge_max = 8; cartridge = 8;
+			ammo_max = 24;	ammo = ammo_max;
+			damage = 5;
+			
+			delay = 1100;
+			vx = 450;
+			w = 8;	h = 2;
+			
+		end
+		//else\if type == 2 then //BFG
+		//	damage = 1;
+		//	cartridge_max = 100;
+		//	ammo_max = 100;
+		//yolo
+		
+		//par/or do 
+			var int dt;
+			every dt in SDL_DT do
+				if ammo >= ammo_max then
+					ammo = ammo_max;
+				else/if ammo <= 0 then
+					ammo = 0;
+				end
+				
+				if cartridge >= cartridge_max then
+					cartridge = cartridge_max;
+				else/if cartridge <= 0 then
+					cartridge = 0;
+				end
+			end
+		//end
+	end
+	//}
+
+	//{player
+    code/await Player (pool&[] Tiros tiro, pool&[] Guns gun, pool&[] Plataforms plat) -> (var SDL_Rect r, 
+	var float vx, var float vy, var float y, var bool ok_y, var SDL_Rect hitbox, var SDL_Rect hitbox_plat,
+	var int hp, event void gethit, var int weapon_now, event void game_over) 
+	-> void do
+   
+        var float x = WINDOW_W/2 - 20/2;
+        y = WINDOW_H-72;
+        vx = 0;
+        vy = 0;
+		var int jump = 0;
+		var int lookat = -1;
+		var int moveat = -1;
+		var int shooting = 0;
+		hp = 3;
+		var _SDL_RendererFlip flip = _SDL_FLIP_NONE;
+		
+		ok_y = true;
+		var bool monster_hit = false;
+		
+		spawn Guns(0) in gun;
+		spawn Guns(1) in gun;
+		
+		var&? Plataforms pl;
+		var&? Guns g;
+		
+		/*inicio*///preparando variaveis de animação
+		var int img_player_w = 0;
+		var int img_player_h = 0;
+		var int framesx = 12;
+		var int framesy = 5;
+		_SDL_QueryTexture(&&outer.img_player.tex.tex, null, null, &&img_player_w, &&img_player_h);
+		img_player_w = img_player_w / framesx;
+		img_player_h = img_player_h / framesy;
+
+		var int frame_walk_i = 0;
+		var int frame_walk_j = 0;
+		vector[] int walk_i = [0, 0, 1, 1];
+		vector[] int walk_j = [2, 7, 0, 5];
+		vector[] int stand_i = [1];
+		vector[] int stand_j = [10];
+		//variaveis de animção fim
+		/*fim*/
+		
+		
+		/*inicio*///preparando hitbox com monstros
+		var int hitbox_w = img_player_w - 30;
+		var int hitbox_h = img_player_h - 10;
+		hitbox = val SDL_Rect(0, 0, hitbox_w, hitbox_h);
+		//hitbox para as plataformas
+		hitbox_plat = val SDL_Rect(0, 0, hitbox_w, 5);
+		//hitbox fim
+		/*fim*/
+		
+        r = val SDL_Rect(0,0, img_player_w, img_player_h);
+		
+		weapon_now = 0;
+		outer.score = 0;
+		
+		par/or do
+		//screen limit
+            var int dt;
+            every dt in SDL_DT do
+				ok_y = true;
+				loop pl in plat do
+					if (pl!.y > y) then
+						if (call Intersects(&hitbox_plat, &pl!.hitbox)) and ((vy > 0)) then
+							ok_y = false;
+							y = pl!.hitbox.y-63;
+						end
+					end
+				end
+
+				if ok_y then
+					vy = vy+GF;
+					y = y + vy*dt/1000;
+				end
+				
+				if hp <= 0 then
+					hp = 0;
+					emit game_over;
+				end
+				
+				//_printf("hp = %d\n", hp);
+				
+				if x<=0 then
+					x = 0;
+				else/if x>=WINDOW_W-r.w then
+					x = WINDOW_W-r.w;
+				end
+				
+				if y<0 then
+					y = 0;
+					//vy = 0;				
+				else/if y>=WINDOW_H-r.h then
+					y = WINDOW_H-r.h-5;
+					//vy = 0;
+				end
+				
+				if vx == 0 then
+					moveat = 0;
+				end
+				
+				if lookat == 1 then
+					flip = _SDL_FLIP_HORIZONTAL;
+				else 
+					flip = _SDL_FLIP_NONE;
+				end
+				
+                x = x + vx*dt/1000;
+                //y = y + vy*dt/1000;
+
+            end
+		//screen limit end
+		with
+			par do
+				par/or do				
+					loop do
+						var _SDL_KeyboardEvent&& key;
+						key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_a;
+						
+						if moveat == 0 and monster_hit == false then
+							vx = -350;
+							lookat = -1;
+							moveat = -1;
+						
+							key = await SDL_KEYUP   until key:keysym.sym==_SDLK_a;
+							vx = 0;
+							moveat = 0;
+						end
+					end
+				with
+					loop do
+						var _SDL_KeyboardEvent&& key;
+						key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_d;
+						if moveat == 0 and monster_hit == false then
+							vx = 350;
+							lookat = 1;
+							moveat = 1;
+							
+							key = await SDL_KEYUP   until key:keysym.sym==_SDLK_d;
+							vx = 0;
+							moveat = 0;
+						end
+					end
+				end
+			with
+				loop do
+					var _SDL_KeyboardEvent&& key;
+					key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_SPACE;
+					if ok_y == false then
+						ok_y = true;
+						jump = 1;
+						vy = -350;
+						await 300ms;
+					end						
+				end
+			with
+				loop do
+					var _SDL_KeyboardEvent&& key;
+                    key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_LEFT;
+					//spawn Tiros(x, y+30, -1, 2, 15, 5, 150) in tiro;
+					//await 150 ms;
+					if (shooting == 0 and vx == 0) then
+						shooting = 1;
+						_printf("im here\n");
+						loop g in gun do
+							if g!.type == weapon_now and g!.cartridge > 0 then
+								_printf ("damage = %d\n",g!.damage);
+								_printf ("type = %d\n",g!.type);
+								_printf ("vx = %d\n", g!.vx);
+								_printf ("ammo = %d\n", g!.ammo);
+								_printf ("cartridge = %d\n", g!.cartridge);
+								if g!.type == 1 then //shotgun
+									var int i;
+									_Mix_PlayChannel(-1, &&outer.shotgun_fire.sound, 0);
+									if lookat == 1 then
+										loop i in [1->3] do
+											spawn Tiros(x + img_player_w + _rand()%5, y+15+_rand()%30, 
+														lookat, g!.damage, g!.w, g!.h, g!.vx) in tiro;
+										end
+									else
+										loop i in [1->3] do
+											spawn Tiros(x + _rand()%5, y+15+_rand()%30, lookat,
+														g!.damage, g!.w, g!.h, g!.vx) in tiro;
+										end
+									end
+									await (g!.delay)ms;
+								else //todo o resto//rifle
+									_Mix_PlayChannel(-1, &&outer.assault_fire.sound, 0);
+									if lookat == 1 then 
+										spawn Tiros(x + img_player_w, y+25+_rand()%10, lookat,
+													g!.damage, g!.w, g!.h, g!.vx) in tiro;
+									else
+										spawn Tiros(x, y+25+_rand()%10, lookat,
+													g!.damage, g!.w, g!.h, g!.vx) in tiro;
+									end
+									await (g!.delay)ms;
+								end
+								g!.ammo = g!.ammo -1;
+								g!.cartridge = g!.cartridge - 1;								
+							end
+						end
+						shooting = 0;
+					end
+				end
+			with
+				loop do
+					var _SDL_KeyboardEvent&& key;
+                    key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_r;
+					var int aux1 = 0;
+					var int aux2 = 0;
+					loop g in gun do 
+						if (g!.type == weapon_now) and (g!.ammo > 0) and (g!.cartridge < g!.cartridge_max) then
+							//_printf("cmax = %d\n", g!.cartridge_max);
+							//_printf("c = %d\n", g!.cartridge);
+							//_printf("recarregando\n");
+							aux1 = g!.cartridge_max - g!.cartridge;
+							//_printf("aux1 = %d\n", aux1);
+							if g!.ammo > aux1 then
+								//_printf("recarregando2\n");
+								aux2 = aux1;
+								g!.ammo = g!.ammo - aux1;
+							else/if g!.ammo < aux1 then
+								aux2 = g!.ammo;
+								g!.ammo = 0;
+							end
+							//_printf("recarregando3\n");
+							//_printf("aux2 = %d\n", aux2);
+							g!.cartridge = g!.cartridge + aux2;
+							_Mix_PlayChannel(-1, &&outer.weapon_reload01.sound, 0);
+							await 300ms;
+							_Mix_PlayChannel(-1, &&outer.weapon_reload02.sound, 0);
+							await 300ms;
+							_Mix_PlayChannel(-1, &&outer.weapon_reload03.sound, 0);
+							await 300ms;
+						end
+					end
+				end
+			end
+        with
+			loop do
+				//var int aux = -1;
+				var _SDL_KeyboardEvent&& key;
+                key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_1;
+				loop g in gun do
+					if g!.type == 0 then
+						//g!.active = true;
+						_Mix_PlayChannel(-1, &&outer.weapon_reload01.sound, 0);
+						weapon_now = g!.type;
+						_printf("typo = %d\n", g!.type);
+						_printf("ammo de 1 = %d\n", g!.cartridge);
+					else/if g!.type != 0 then
+						//g!.active = false;
+						_printf("nope = %d\n", g!.type);
+					end
+				end
+			end	
+		with
+			loop do
+				//var int aux = -1;
+				var _SDL_KeyboardEvent&& key;
+                key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_2;
+				loop g in gun do
+					if g!.type == 1 then
+						_Mix_PlayChannel(-1, &&outer.weapon_reload01.sound, 0);
+						//g!.active = true;
+						weapon_now = g!.type;
+						_printf("typo = %d\n", g!.type);
+						_printf("ammo de 2 = %d\n", g!.cartridge);
+						//break;
+					else/if g!.type != 1 then
+						//g!.active = false;
+						_printf("nope = %d\n", g!.type);
+					end
+				end
+			end	
+		with
+			
+			loop do
+				
+				await gethit;
+				_Mix_PlayChannel(-1, &&outer.player_hurt.sound, 0);
+				ok_y = true;
+				monster_hit = true;
+				vy = -250;
+				vx = lookat*(-1)*250;
+				hp = hp - 1;
+				await 500ms;
+				monster_hit = false;
+				if hp == 0 then
+					_Mix_PlayChannel(-1, &&outer.player_hurt.sound, 0);
+				end;
+				vx = 0;
+			end
+		with
+			every 160ms do
+				frame_walk_i = (frame_walk_i + 1)%($walk_i as int);
+				frame_walk_j = (frame_walk_j + 1)%($walk_j as int);
+			end
+		with
+            every SDL_REDRAW do
+                r.x = x as int;
+                r.y = y as int;
+				hitbox.y = (y as int)+10;
+				var SDL_Rect temp = val SDL_Rect(0,0,0,0);
+				
+				//_SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0x00,0x00,0xFF,0xFF);
+				//_SDL_RenderFillRect(&&outer.sdl!.ren, (&&hitbox as _SDL_Rect&&));
+				//_SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0x00,0xFF,0x00,0xFF);
+				//_SDL_RenderFillRect(&&outer.sdl!.ren, (&&hitbox_plat as _SDL_Rect&&));
+				
+				if moveat == 0 then
+					temp = val SDL_Rect(stand_j[0] * img_player_w, stand_i[0]*img_player_h, img_player_w, img_player_h);
+					if lookat == -1 then
+						hitbox.x = (x as int)+22;
+					else
+						hitbox.x = (x as int)+8;
+					end
+					_SDL_RenderCopyEx(&&outer.sdl!.ren, &&outer.img_player.tex.tex, &&temp as _SDL_Rect&&,&&r as _SDL_Rect&&, 0, null, flip);
+				end 
+				//_SDL_RenderCopy(&&outer.sdl!.ren, &&outer.img_player.tex.tex, null, &&r as _SDL_Rect&&);
+				if moveat != 0 then
+					temp = val SDL_Rect(walk_j[frame_walk_j] * img_player_w, walk_i[frame_walk_i]*img_player_h, img_player_w, img_player_h);
+					hitbox.x = (x as int)+15;
+					_SDL_RenderCopyEx(&&outer.sdl!.ren, &&outer.img_player.tex.tex, &&temp as _SDL_Rect&&,&&r as _SDL_Rect&&, 0, null, flip);
+				end
+				
+				hitbox_plat.x = hitbox.x;
+				hitbox_plat.y = hitbox.y+50;
+				_SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0x00,0xFF,0x00,0xFF);
+            end
+        end
+    end
+	//}Player fim graças a deus
+
+	//{Items
+	code/await Items (var float x, var float y, var int type) -> (var SDL_Rect item_box,
+	event void hitfloor, var int ammo_plus, event void taken) -> int do
+		var int vy = -65;
+		var bool floor = false;
+		
+		ammo_plus = _rand() % 10 + 10;
+		
+		item_box = val SDL_Rect((x+15) as int, y as int, 32, 29);
+		
+		par/or do
+            var int dt;
+            every dt in SDL_DT do
+				if floor == false then 
+					//x = (x + vx*dt/1000);
+					y = (y + vy*dt/1000);
+					vy = vy + GF;
+				end
+				
+                if y < 0 then
+                    escape 0;
+                end
+				
+            end	
+		with
+            every SDL_REDRAW do
+                //_SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0xFF,0x00,0x00,0xFF);
+				item_box.y = y as int;
+				if type == 0 then
+					_SDL_RenderCopy(&&outer.sdl!.ren, &&outer.img_ammo_00.tex.tex, null, 
+					&&item_box as _SDL_Rect&&);
+				else/if type == 1 then
+					_SDL_RenderCopy(&&outer.sdl!.ren, &&outer.img_ammo_01.tex.tex, null, 
+					&&item_box as _SDL_Rect&&);	
+				end
+            end
+		with
+			loop do
+				await hitfloor;
+				floor = true;
+				//vy = 0;
+				await 10s;
+				escape 0;
+			end
+		with
+			loop do
+				await taken;
+				escape 0;
+			end
+		end
+	end
+	//}
+	
+	//{monster
+	code/await Monsters (var float x, var float y, var int direction, var&? Player player, 
+	pool&[]Blood blood, pool&[]Plataforms plat, var int type, pool&[]Items item) 
+	-> (var SDL_Rect r, var SDL_Rect hitbox_plat, var int hp, var bool ok_y, var float vy,
+	event void shot, var bool dead)
+	-> int do
+		var float vx = 0;
+		vy = 0;
+		hp = 0;
+		var _SDL_RendererFlip flip = _SDL_FLIP_NONE;
+		ok_y = true;
+		var&? Plataforms pl;
+		dead = false;
+		
+		var int img_monster_w = 0;
+		var int img_monster_h = 0;
+		var int framesx = 0;
+		var int framesy = 0;
+		var int frame = 0;
+		var int death_frame = 0;
+		var int frame_id = 0;
+		vector[] int walk_i = [0,0,0,0];
+		vector[] int walk_j = [0,0,0,0];
+		vector[] int death_i = [0,0,0,0];
+		vector[] int death_j = [0,0,0,0]; 
+		vector [] int gory_death_i = [0,0,0,0,0,0,0,0];
+		vector [] int gory_death_j = [0,0,0,0,0,0,0,0];
+		var int move_delay = 0;
+		var int death_delay = 250;
+		var int gory_death_delay = 250;
+		
+		if type == 0 then 
+			vx = 50 + _rand() % 20;
+			framesx = 12;
+			framesy = 5;
+			_SDL_QueryTexture(&&outer.img_monster01.tex.tex, null, null, &&img_monster_w, &&img_monster_h);
+			img_monster_w = img_monster_w / framesx;
+			img_monster_h = img_monster_h / framesy;
+
+			walk_i = [0, 0, 1, 1];
+			walk_j = [2, 7, 0, 5];
+			
+			death_i = [3,3,3,3,3];
+			death_j = [4,5,6,7,8];
+			gory_death_i = [9,10,11,0,1,2,3,4];
+			gory_death_j = [3,3,3,3,4,4,4,4];
+			move_delay = 100; 
+			hp = 10;
+		end
+		/*inicio*///preparando hitbox com monstros
+		var SDL_Rect hitbox = val SDL_Rect(0, 0, img_monster_w, img_monster_h);
+		//hitbox para as plataformas
+		hitbox_plat = val SDL_Rect(img_monster_h-5, 0, img_monster_w, 10);
+		//hitbox fim
+		/*fim*/
+		
+		r = val SDL_Rect(x as int, y as int, img_monster_w, img_monster_h);
+		
+		par/or do
+			var int dt;
+			every dt in SDL_DT do
+				ok_y = true;
+				
+				if hp <= 0 then
+					dead = true;
+					hp = 0;
+					vx = 0;
+				end
+				
+				if dead == false then
+					loop pl in plat do
+						if (pl!.y > y) then
+							if (call Intersects(&hitbox_plat, &pl!.hitbox)) and ((vy > 0)) then
+								ok_y = false;
+								//vy = 0;
+								y = pl!.hitbox.y-img_monster_h;
+							end
+						end
+					end
+				end
+				
+				if (hp > 0) then
+					if ok_y then
+						vy = vy+GF;
+						y = y + vy*dt/1000;
+					end
+					
+					if (player!.r.x < r.x) then
+						direction = -1;
+					else/if (player!.r.x > r.x) then
+						direction = 1;
+					end
+				end
+				
+				if direction == 1 then
+					flip = _SDL_FLIP_HORIZONTAL;
+				else 
+					flip = _SDL_FLIP_NONE;
+				end
+			
+			
+				x = x + (direction)*vx*dt/1000;
+				//y = y + (direction)*vy*dt/1000;
+			end
+		//funfando
+		with
+			loop do
+				await (move_delay)ms;
+				frame = (frame + 1)%($walk_i as int);
+				if hp <= 0 then
+					await 250ms;
+					if death_frame< 4 then
+						death_frame = death_frame+1;
+//tirar talvez????????????????????
+					else
+						outer.score = outer.score + 1;
+						if type == 0 then
+							_Mix_PlayChannel(-1, &&outer.enemy_death01.sound, 0);
+						else/if type == 1 then
+							_Mix_PlayChannel(-1, &&outer.enemy_death02.sound, 0);
+						end
+						var int aux = _rand() % 2;
+						if aux == 0 then
+							spawn Items (x, y, _rand() % 2) in item;
+						end
+						await 1000ms;
+						
+						//define falas do jogador
+						var int aux2 = _rand () % 11;
+						if aux2 == 0 then
+							_Mix_PlayChannel(-1, &&outer.player_eat.sound, 0);
+						else/if aux2 == 1 then
+							_Mix_PlayChannel(-1, &&outer.player_good.sound, 0);
+						else/if aux2 == 2 then
+							_Mix_PlayChannel(-1, &&outer.player_gotta.sound, 0);
+						else/if aux2 == 3 then
+							_Mix_PlayChannel(-1, &&outer.player_bacon.sound, 0);
+						else/if aux2 == 4 then
+							_Mix_PlayChannel(-1, &&outer.player_blow.sound, 0);
+						else/if aux2 == 5 then
+							_Mix_PlayChannel(-1, &&outer.player_come.sound, 0);
+						else/if aux2 == 6 then
+							_Mix_PlayChannel(-1, &&outer.player_cow.sound, 0);
+						else/if aux2 == 7 then
+							_Mix_PlayChannel(-1, &&outer.player_see.sound, 0);
+						else/if aux2 == 8 then
+							_Mix_PlayChannel(-1, &&outer.player_suck.sound, 0);
+						else/if aux2 == 9 then
+							_Mix_PlayChannel(-1, &&outer.player_cake.sound, 0);
+						else/if aux2 == 10 then
+							_Mix_PlayChannel(-1, &&outer.player_see.sound, 0);
+						end
+						
+						await 5s;
+						escape 0;
+					end
+				end
+			end
+		with
+			every SDL_REDRAW do
+				r.x = x as int;
+				r.y = y as int;
+				hitbox_plat.x = x as int;
+				hitbox_plat.y = (y as int) + img_monster_h -5;
+				
+				var SDL_Rect temp = val SDL_Rect(0,0,0,0);
+				//_SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0x00,0xFF,0x00,0xFF);
+				//_SDL_RenderFillRect(&&outer.sdl!.ren, (&&hitbox_plat as _SDL_Rect&&));
+				if type == 0 then
+					if hp <= 0 then
+						temp = val SDL_Rect(death_j[death_frame] * img_monster_w, death_i[death_frame]*img_monster_h, img_monster_w, img_monster_h);
+						_SDL_RenderCopyEx(&&outer.sdl!.ren, &&outer.img_monster01.tex.tex, &&temp as _SDL_Rect&&,&&r as _SDL_Rect&&, 0, null, flip);
+					else
+						temp = val SDL_Rect(walk_j[frame] * img_monster_w, walk_i[frame]*img_monster_h, img_monster_w, img_monster_h);
+						_SDL_RenderCopyEx(&&outer.sdl!.ren, &&outer.img_monster01.tex.tex, &&temp as _SDL_Rect&&,&&r as _SDL_Rect&&, 0, null, flip);
+					end					
+				else
+					_SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0x00,0x00,0xFF,0xFF);
+					_SDL_RenderFillRect(&&outer.sdl!.ren, (&&r as _SDL_Rect&&));
+				end
+			end			
+		with
+			loop do 
+				await shot;
+				var float aux = vx;
+				var int j;
+				loop j in [1->5] do
+					spawn Blood (x+15, y, (-1)*(direction)) in blood;
+					spawn Blood (x+15, y, (direction)) in blood;
+				end
+				vx = 0;
+				await 500ms;
+				vx = aux;
+			end
+		end
+	end
+	//}
+
+	//{Hud
+	code/await Hud(var&? Player player, pool&[] Guns gun)-> void do		
+
+		var int player_hp = 0;
+		
+		//configuração de exibição das armas
+		var int img_weapons_w = 0;
+		var int img_weapons_h = 0;
+		var int framesy = 3;
+		_SDL_QueryTexture(&&outer.img_weapons.tex.tex, null, null, &&img_weapons_w, &&img_weapons_h);
+		img_weapons_h = img_weapons_h/framesy;
+		vector[] int weapon0_pos = [0];
+		vector[] int weapon1_pos = [1];
+		
+		var float m = 2;
+		var float m2 = 1.4;
+		var SDL_Rect weapon0_rec = val SDL_Rect((WINDOW_W - ((img_weapons_w*2)*m+100)) as int, 15,
+		(img_weapons_w*m) as int, (img_weapons_h*m) as int);
+		var SDL_Rect weapon1_rec = val SDL_Rect((WINDOW_W - ((img_weapons_w)*m + 50)) as int, 15,
+		(img_weapons_w*m) as int, (img_weapons_h*m) as int);
+		
+		var int weapon_now = 0;
+		var SDL_Rect weapon_now_box = val SDL_Rect((WINDOW_W - ((img_weapons_w)*m + 25)) as int, 15, 
+		(img_weapons_w*m*m2) as int, (img_weapons_h*m*m2) as int);
+		
+		
+		
+		//configuração da exibição da vida
+		var int img_php_w = 0;
+		var int img_php_h = 0;
+		framesy = 4;
+		var int frame_hp = 0;
+		_SDL_QueryTexture(&&outer.img_player_hp.tex.tex, null, null, &&img_php_w, &&img_php_h);
+		img_php_h = img_php_h/framesy;
+		vector[] int php_pos = [0,1,2,3];
+		
+		var float m3 = 1.5;
+		var SDL_Rect php_rec = val SDL_Rect(20, 15, (img_php_w*m3) as int, (img_php_h*m3) as int);
+		
+		
+		var SDL_Rect menu_box = val SDL_Rect(0, 10, WINDOW_W,65);
+		
+		var&? Guns g;
+		
+		var int ammo_now = 0;
+		var int ammo_cartridge = 0;
+		
+		native/nohold _snprintf;
+		vector[10] _char str = _;
+		vector[10] _char score = _;
+		_snprintf(&&str[0],10, "%d / %d" , 999, 100);
+		_snprintf(&&score[0],10, "%d / %d" , 999, 100);
+		//_printf(">>> %s\n", &&str[0]);
+		
+		
+		var SDL_Rect ammo_menu = val SDL_Rect(225, 15, 150, 50);
+		var SDL_Rect score_menu = val SDL_Rect(225, 75, 150, 50);
+		
+		par/or do
+			var int dt;
+			every dt in SDL_DT do
+				//_printf("p_hp = %d\n");
+				player_hp = player!.hp;
+				//_printf("player_hp = %d\n", player_hp);
+				frame_hp = 3 - player_hp;
+				
+				weapon_now = player!.weapon_now;
+				 
+				loop g in gun do
+					if weapon_now == g!.type then
+						ammo_cartridge = g!.cartridge;
+						ammo_now = g!.ammo;
+					end
+				end
+				
+				_snprintf(&&str[0],10, "%d / %d" , ammo_cartridge, ammo_now);
+				_snprintf(&&score[0],10, "SCORE: %d" , outer.score);
+				
+				
+			end
+		with
+			loop do
+				await SDL_REDRAW;
+				_SDL_SetRenderDrawColor(&&outer.sdl!.ren, 155,0x00,0x00,0xFF);
+                _SDL_RenderFillRect(&&outer.sdl!.ren, (&&menu_box as _SDL_Rect&&));
+				
+				var& SDL_New_Text player_ammo = spawn SDL_New_Text(&outer.sdl!.ren, &outer.font.font, &&str[0], SDL_Color(0xFF,0xFF,0xFF,0xFF));
+				_SDL_RenderCopy(&&outer.sdl!.ren, &&player_ammo.tex.tex, null, &&ammo_menu as _SDL_Rect&&);
+				
+				var& SDL_New_Text player_score = spawn SDL_New_Text(&outer.sdl!.ren, &outer.font.font, &&score[0], SDL_Color(0xFF,0xFF,0xFF,0xFF));
+				_SDL_RenderCopy(&&outer.sdl!.ren, &&player_score.tex.tex, null, &&score_menu as _SDL_Rect&&);
+				
+				var SDL_Rect temp = val SDL_Rect(0,0,0,0);
+				temp = val SDL_Rect(0, php_pos[frame_hp]*img_php_h, img_php_w, img_php_h);
+				_SDL_RenderCopyEx(&&outer.sdl!.ren, &&outer.img_player_hp.tex.tex, 
+					&&temp as _SDL_Rect&&,&&php_rec as _SDL_Rect&&, 0, null, 0);
+				
+				if weapon_now == 0 then
+					weapon_now_box.x = weapon0_rec.x;
+					weapon_now_box.y = weapon0_rec.y;
+					
+					temp = val SDL_Rect(0, weapon0_pos[0]*img_weapons_h, img_weapons_w, img_weapons_h);
+					_SDL_RenderCopyEx(&&outer.sdl!.ren, &&outer.img_weapons.tex.tex, 
+					&&temp as _SDL_Rect&&,&&weapon_now_box as _SDL_Rect&&, 0, null, 0);
+					
+					temp = val SDL_Rect(0, weapon1_pos[0]*img_weapons_h, img_weapons_w, img_weapons_h);
+					_SDL_RenderCopyEx(&&outer.sdl!.ren, &&outer.img_weapons.tex.tex, 
+					&&temp as _SDL_Rect&&,&&weapon1_rec as _SDL_Rect&&, 0, null, 0);
+				else/if weapon_now == 1 then
+					weapon_now_box.x = weapon1_rec.x;
+					weapon_now_box.y = weapon1_rec.y;
+					temp = val SDL_Rect(0, weapon1_pos[0]*img_weapons_h, img_weapons_w, img_weapons_h);
+					_SDL_RenderCopyEx(&&outer.sdl!.ren, &&outer.img_weapons.tex.tex, &&temp as _SDL_Rect&&,&&weapon_now_box as _SDL_Rect&&, 0, null, 0);
+					
+					temp = val SDL_Rect(0, weapon0_pos[0]*img_weapons_h, img_weapons_w, img_weapons_h);
+					_SDL_RenderCopyEx(&&outer.sdl!.ren, &&outer.img_weapons.tex.tex, &&temp as _SDL_Rect&&,&&weapon0_rec as _SDL_Rect&&, 0, null, 0);
+				end					
+				
+			end
+		end
+	end
+	//}
+	
+
+	//{"main"
+    var&? Player p;
+	var&? Hud hud;
+	var&? PrintEnd msg;
+	
+	await PrintStart();
+	
+	spawn Background();
+	
+	//pool[] PrintEnd msg;
+	pool[] Plataforms plat;
+	pool[] Blood blood;
+	pool[] Tiros tiro;
+	pool[] Monsters monster;
+	pool[] Items item;
+	pool[] Guns guns;
+	
+	//main plataform
+	spawn Plataforms(0,WINDOW_H-10,800,20) in plat;
+
+	spawn Plataforms(0,WINDOW_H-100,150,20) in plat;
+	spawn Plataforms(250,WINDOW_H-100,150,20) in plat;
+	spawn Plataforms(500,WINDOW_H-100,150,20) in plat;
+	spawn Plataforms(750,WINDOW_H-100,150,20) in plat;
+	
+	spawn Plataforms(100,WINDOW_H-200,250,20) in plat;
+	spawn Plataforms(450,WINDOW_H-200,250,20) in plat;
+	
+	spawn Plataforms(0,WINDOW_H-300,150,20) in plat;
+	spawn Plataforms(650,WINDOW_H-300,150,20) in plat;
+	spawn Plataforms(350,WINDOW_H-300,100,20) in plat;
+	spawn Plataforms(250,WINDOW_H-400,300,20) in plat;
+	
+	p = spawn Player(&tiro, &guns, &plat);
+	hud = spawn Hud(&p, &guns); 
+	_Mix_PlayChannel(-1, &&player_intro.sound, 0);
+	
+
+	par/or do
+		every SDL_DT do
+			var&? Plataforms pl;
+			var&? Monsters m;
+			var&? Tiros t;
+			var&? Blood b;
+			var&? Items it;
+			var&? Guns g;
+			
+			loop pl in plat do
+				loop it in item do
+					if (call Intersects(&it!.item_box, &pl!.hitbox)) then
+						emit it!.hitfloor;
+					end
+				end
+				loop b in blood do
+					if (call Intersects(&b!.r, &pl!.hitbox)) then
+						emit b!.hitfloor;
+					end
+				end
+			end
+			
+			loop it in item do
+				if (call Intersects(&it!.item_box, &p!.hitbox)) then
+					emit it!.taken;
+					loop g in guns do
+						if it!.type == g!.type then 
+							g!.ammo = g!.ammo + it!.ammo_plus;
+							_Mix_PlayChannel(-1, &&item_pick.sound, 0);
+						end
+						_printf("ammo %d = %d\n", g!.type, g!.ammo);
+					end
+				end
+			end
+
+			loop m in monster do
+				if (call Intersects(&m!.r, &p!.hitbox) and m!.dead == false) then
+					emit p!.gethit;
+				end
+				loop t in tiro do
+					if (call Intersects(&m!.r, &t!.r) and m!.hp > 0) then
+						emit t!.collide;
+						emit m!.shot;
+						m!.hp = m!.hp - t!.damage;
+						_Mix_PlayChannel(-1, &&enemy_hurt.sound, 0);					
+					end
+				end
+			end
+		end
+	with
+		var int monster_count = 0;
+		loop do
+			await 1s;
+			_Mix_PlayChannel(-1, &&enemy_spawn.sound, 0);
+			spawn Monsters(40, WINDOW_H-400, 1, &p, &blood, &plat, 0, &item) in monster;
+			spawn Monsters(WINDOW_W - 40, WINDOW_H-400, 1, &p, &blood, &plat, 0, &item) in monster;
+			monster_count = monster_count + 2;
+			
+			if monster_count >= 6 then
+				await 10s;
+				var int i;
+				loop i in [1 -> 3] do
+					await 1s;
+					spawn Monsters(40, WINDOW_H-400, 1, &p, &blood, &plat, 0, &item) in monster;
+					spawn Monsters(WINDOW_W - 40, WINDOW_H-400, 1, &p, &blood, &plat, 0, &item) in monster;
+				end
+				monster_count = 0;
+			end
+			
+		end
+	with
+		await p!.game_over;
+	end
+	_Mix_PlayChannel(-1, &&game_over.sound, 0);
+		await PrintEnd();
+	//}
+end
+
+escape 0;
